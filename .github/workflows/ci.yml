@@ -1,0 +1,33 @@
+name: ml-pipeline
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  train-test-monitor:
+    runs-on: ubuntu-latest
+    env:
+      # Set this repository secret to http://YOUR_VM_IP:5000
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install -r requirements-dev.txt
+      - name: 1 Prepare data
+        run: python -m src.prepare_data
+      - name: 2 Train model and check quality gate
+        run: python -m src.train
+      - name: 3 Run unit tests
+        run: pytest -q
+      - name: 4 Batch scoring
+        run: python -m src.batch_predict
+      - name: 5 Drift check
+        run: python -m src.drift || echo "::warning::Drift found - consider retraining"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: predictions
+          path: data/predictions.csv

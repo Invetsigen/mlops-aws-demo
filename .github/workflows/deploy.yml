@@ -1,0 +1,37 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Lets GitHub sign in to AWS with a short-lived token instead of stored keys.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: mlops-aws-demo
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 1 Sign in to AWS with the GitHub role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: 2 Sign in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: 3 Build image (trains the model and checks the quality gate)
+        run: docker build -t ${{ steps.ecr.outputs.registry }}/$ECR_REPOSITORY:latest -t ${{ steps.ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }} .
+      - name: 4 Push image to ECR
+        run: docker push --all-tags ${{ steps.ecr.outputs.registry }}/$ECR_REPOSITORY
+      - name: 5 Deploy the new image to ECS
+        if: ${{ vars.ECS_SERVICE != '' }}
+        run: |
+          aws ecs update-service --cluster ${{ vars.ECS_CLUSTER || 'default' }} --service ${{ vars.ECS_SERVICE }} --force-new-deployment --query "service.serviceName" --output text
+          echo "New deployment started. ECS replaces the old task once the new one is healthy."
