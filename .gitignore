@@ -1,0 +1,7 @@
+mlruns/
+__pycache__/
+data/predictions.csv
+mlflow.db
+mlartifacts/
+model/
+key.json
